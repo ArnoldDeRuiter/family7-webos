@@ -1,6 +1,6 @@
 {
     "id": "nl.arnolderuiter.family7",
-    "version": "0.1.3",
+    "version": "0.1.4",
     "vendor": "ArnoldDeRuiter",
     "type": "web",
     "main": "index.html",
@@ -8,5 +8,6 @@
     "icon": "icon.png",
     "largeIcon": "icon.png",
     "bgColor": "#14326e",
-    "iconColor": "#14326e"
+    "iconColor": "#14326e",
+    "splashBackground": "splash.png"
 }
