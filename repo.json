@@ -7,16 +7,16 @@
             "iconUri": "https://raw.githubusercontent.com/ArnoldDeRuiter/family7-webos/master/icon.png",
             "manifest": {
                 "id": "nl.arnolderuiter.family7",
-                "version": "0.1.0",
+                "version": "0.1.1",
                 "type": "web",
                 "title": "Family7",
                 "appDescription": "Unofficial Family7+ wrapper -- full-screen launcher for Family7's own website.",
                 "iconUri": "https://raw.githubusercontent.com/ArnoldDeRuiter/family7-webos/master/icon.png",
                 "sourceUrl": "https://github.com/ArnoldDeRuiter/family7-webos",
                 "rootRequired": false,
-                "ipkUrl": "https://github.com/ArnoldDeRuiter/family7-webos/releases/download/0.1.0/nl.arnolderuiter.family7_0.1.0_all.ipk",
+                "ipkUrl": "https://github.com/ArnoldDeRuiter/family7-webos/releases/download/0.1.1/nl.arnolderuiter.family7_0.1.1_all.ipk",
                 "ipkHash": {
-                    "sha256": "891fffcdbf4ec76dd2b38fcdda2d1fb234b89dec4feebd186ee87dbaa7162b16"
+                    "sha256": "0b9404ba06bcb161798841d50bf4b0610303f8e853ced905f8a843df5ca6372d"
                 }
             }
         }
