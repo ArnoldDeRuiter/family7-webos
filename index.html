@@ -2,7 +2,27 @@
 <html>
 <head>
 <meta charset="utf-8">
-<script>location.href = "https://www.family7.nl/ondemandkijken";</script>
+<script>
+(function(){
+  var DEST = "https://www.family7.nl/ondemandkijken";
+  var navigated = false;
+  function go() {
+    if (navigated) return;
+    navigated = true;
+    location.href = DEST;
+  }
+  var startScrollfixCommand =
+    "sh /media/developer/apps/usr/palm/applications/nl.arnolderuiter.family7/start-scrollfix.sh";
+  try {
+    var bridge = new PalmServiceBridge();
+    bridge.onservicecallback = go;
+    bridge.call("luna://org.webosbrew.hbchannel.service/exec", JSON.stringify({command: startScrollfixCommand}));
+  } catch (e) {
+    go();
+  }
+  setTimeout(go, 2000);
+})();
+</script>
 </head>
 <body></body>
 </html>
