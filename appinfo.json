@@ -1,0 +1,12 @@
+{
+    "id": "nl.arnolderuiter.family7",
+    "version": "0.1.0",
+    "vendor": "ArnoldDeRuiter",
+    "type": "web",
+    "main": "index.html",
+    "title": "Family7",
+    "icon": "icon.png",
+    "largeIcon": "icon.png",
+    "bgColor": "#14326e",
+    "iconColor": "#14326e"
+}
