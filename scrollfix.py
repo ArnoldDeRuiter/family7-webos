@@ -17,13 +17,17 @@ so the listener can't just live in index.html. Instead this daemon runs as
 a background root process, polls the on-device Chrome DevTools Protocol
 endpoint (127.0.0.1:9998) for this app's WAM tab, and keeps a live debugger
 connection open so the fix re-applies to every new document that tab loads.
+
+The app is a singleton (one WAM instance at a time), so this process watches
+exactly one target and exits as soon as that target's debugger connection
+closes -- i.e. once Family7 itself is closed. index.html restarts a fresh
+instance of this daemon the next time the app is launched.
 """
 
 import base64
-import hashlib
 import json
+import os
 import socket
-import threading
 import time
 import urllib.request
 
@@ -31,7 +35,7 @@ CDP_HOST = "127.0.0.1"
 CDP_PORT = 9998
 APP_DESCRIPTION = "nl.arnolderuiter.family7"
 POLL_INTERVAL_SECONDS = 3
-WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+PIDFILE = "/tmp/family7-scrollfix.pid"
 
 FIX_JS = """
 (function(){
@@ -45,12 +49,9 @@ FIX_JS = """
 })();
 """
 
-tracked_target_ids = set()
-tracked_lock = threading.Lock()
-
 
 def _handshake(sock, host, port, path):
-    key = base64.b64encode(_urandom(16)).decode("ascii")
+    key = base64.b64encode(os.urandom(16)).decode("ascii")
     lines = [
         "GET %s HTTP/1.1" % path,
         "Host: %s:%d" % (host, port),
@@ -74,17 +75,11 @@ def _handshake(sock, host, port, path):
         raise OSError("unexpected handshake response: %s" % status_line)
 
 
-def _urandom(n):
-    import os
-
-    return os.urandom(n)
-
-
 def _send_frame(sock, payload):
     data = payload.encode("utf-8")
     header = bytearray([0x80 | 0x1])
     length = len(data)
-    mask = _urandom(4)
+    mask = os.urandom(4)
     if length <= 125:
         header.append(0x80 | length)
     elif length <= 0xFFFF:
@@ -119,32 +114,42 @@ def _recv_frame(sock):
     return opcode, payload
 
 
+def _find_target():
+    while True:
+        try:
+            with urllib.request.urlopen(
+                "http://%s:%d/json" % (CDP_HOST, CDP_PORT), timeout=5
+            ) as resp:
+                targets = json.loads(resp.read().decode("utf-8"))
+        except OSError:
+            targets = []
+        for target in targets:
+            if target.get("description") == APP_DESCRIPTION:
+                return target
+        time.sleep(POLL_INTERVAL_SECONDS)
+
+
 def _watch_target(target):
+    """Blocks until the target's debugger connection closes (app closed)."""
     target_id = target["id"]
     ws_url = target["webSocketDebuggerUrl"]
     path = ws_url.split(CDP_HOST + ":" + str(CDP_PORT), 1)[1]
     sock = socket.create_connection((CDP_HOST, CDP_PORT), timeout=10)
     try:
         _handshake(sock, CDP_HOST, CDP_PORT, path)
-        msg_id = 1
-        _send_frame(sock, json.dumps({"id": msg_id, "method": "Page.enable"}))
-        msg_id += 1
+        _send_frame(sock, json.dumps({"id": 1, "method": "Page.enable"}))
         _send_frame(
             sock,
             json.dumps(
                 {
-                    "id": msg_id,
+                    "id": 2,
                     "method": "Page.addScriptToEvaluateOnNewDocument",
                     "params": {"source": FIX_JS},
                 }
             ),
         )
-        msg_id += 1
         _send_frame(
-            sock,
-            json.dumps(
-                {"id": msg_id, "method": "Runtime.evaluate", "params": {"expression": FIX_JS}}
-            ),
+            sock, json.dumps({"id": 3, "method": "Runtime.evaluate", "params": {"expression": FIX_JS}})
         )
         print("scrollfix: injected into target %s" % target_id, flush=True)
         sock.settimeout(60)
@@ -162,30 +167,18 @@ def _watch_target(target):
             sock.close()
         except OSError:
             pass
-        with tracked_lock:
-            tracked_target_ids.discard(target_id)
 
 
 def main():
     print("scrollfix: watching for %s" % APP_DESCRIPTION, flush=True)
-    while True:
-        try:
-            with urllib.request.urlopen(
-                "http://%s:%d/json" % (CDP_HOST, CDP_PORT), timeout=5
-            ) as resp:
-                targets = json.loads(resp.read().decode("utf-8"))
-        except OSError:
-            targets = []
-        for target in targets:
-            if target.get("description") != APP_DESCRIPTION:
-                continue
-            target_id = target["id"]
-            with tracked_lock:
-                if target_id in tracked_target_ids:
-                    continue
-                tracked_target_ids.add(target_id)
-            threading.Thread(target=_watch_target, args=(target,), daemon=True).start()
-        time.sleep(POLL_INTERVAL_SECONDS)
+    target = _find_target()
+    _watch_target(target)
+    print("scrollfix: Family7 closed, exiting", flush=True)
+    try:
+        if str(os.getpid()) == open(PIDFILE).read().strip():
+            os.remove(PIDFILE)
+    except OSError:
+        pass
 
 
 if __name__ == "__main__":
