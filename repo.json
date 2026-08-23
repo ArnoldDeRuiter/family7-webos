@@ -16,7 +16,7 @@
                 "rootRequired": false,
                 "ipkUrl": "https://github.com/ArnoldDeRuiter/family7-webos/releases/download/0.1.1/nl.arnolderuiter.family7_0.1.1_all.ipk",
                 "ipkHash": {
-                    "sha256": "0b9404ba06bcb161798841d50bf4b0610303f8e853ced905f8a843df5ca6372d"
+                    "sha256": "bcf373f4d3535a2ef42015e7b28dd10c67307dffabd1d0d469d6166925e1b04b"
                 }
             }
         }
