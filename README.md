@@ -58,10 +58,22 @@ background for the rest of the session.
 
 ## Installing
 
+In Homebrew Channel, open **Add repository** and enter:
+
+```
+https://github.com/ArnoldDeRuiter/family7-webos/releases/latest/download/repo.json
+```
+
+Family7 then appears in the app list and updates alongside everything else
+Homebrew Channel manages.
+
+To build it yourself instead:
+
 ```sh
 ./build.sh
 ```
-produces `nl.arnolderuiter.family7_<version>_all.ipk`.
+produces `nl.arnolderuiter.family7_<version>_all.ipk`, installable by
+sideloading the ipk directly.
 
 ## License
 
