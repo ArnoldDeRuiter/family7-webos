@@ -11,12 +11,13 @@
     navigated = true;
     location.href = DEST;
   }
-  var startScrollfixCommand =
-    "sh /media/developer/apps/usr/palm/applications/nl.arnolderuiter.family7/start-scrollfix.sh";
+  var appDir = "/media/developer/apps/usr/palm/applications/nl.arnolderuiter.family7";
+  var startBackgroundServicesCommand =
+    "sh " + appDir + "/start-scrollfix.sh; sh " + appDir + "/start-loginfill.sh";
   try {
     var bridge = new PalmServiceBridge();
     bridge.onservicecallback = go;
-    bridge.call("luna://org.webosbrew.hbchannel.service/exec", JSON.stringify({command: startScrollfixCommand}));
+    bridge.call("luna://org.webosbrew.hbchannel.service/exec", JSON.stringify({command: startBackgroundServicesCommand}));
   } catch (e) {
     go();
   }
