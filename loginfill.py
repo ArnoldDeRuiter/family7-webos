@@ -24,8 +24,10 @@ deliberate action.
 
 import json
 import os
+import select
 import socket
 import time
+import urllib.parse
 import urllib.request
 
 CDP_HOST = "127.0.0.1"
@@ -166,6 +168,13 @@ def _find_target():
         time.sleep(POLL_INTERVAL_SECONDS)
 
 
+_state = {"filled": False}
+SESSION_CHECK_DELAY_SECONDS = 4  # after the site page loads, once it has had its say about the cookie
+
+AUTH_COOKIE_DOMAIN_SUFFIX = "family7.nl"
+AUTH_COOKIE_NAME_PREFIX = "SSESS"  # Drupal session cookie; hash suffix varies per site
+
+
 def _call(sock, msg_id, method, params=None):
     """Request/response helper: sends one CDP command and blocks for the
     matching reply, discarding any events that arrive first."""
@@ -178,8 +187,25 @@ def _call(sock, msg_id, method, params=None):
             msg = json.loads(payload.decode("utf-8"))
         except ValueError:
             continue
+        if _is_fill_complete_message(payload):
+            _state["filled"] = True
         if msg.get("id") == msg_id:
             return msg
+
+
+def _has_valid_session(sock):
+    """True if a cookie proving an already-logged-in session exists. Checked
+    before injecting anything -- no point watching for a login form that
+    won't even show up because the site will just load straight into the
+    logged-in view."""
+    result = _call(sock, 100, "Network.getAllCookies")
+    cookies = result.get("result", {}).get("cookies", [])
+    for cookie in cookies:
+        domain = cookie.get("domain", "")
+        name = cookie.get("name", "")
+        if domain.endswith(AUTH_COOKIE_DOMAIN_SUFFIX) and name.startswith(AUTH_COOKIE_NAME_PREFIX):
+            return True
+    return False
 
 
 FILL_COMPLETE_MARKER = "__loginFillComplete__"
@@ -197,13 +223,18 @@ def _is_fill_complete_message(payload):
 
 
 def _watch_target(target, fill_js):
-    """Stays attached until the target closes, so every later login page (expired session, logout) gets filled too."""
+    """Blocks until the fields are filled, the session proves valid, or the app closes.
+
+    The session check waits until the site page has loaded: the cookie left over from an
+    earlier run can be stale, and the site only drops it once it has handled a request.
+    """
     target_id = target["id"]
     ws_url = target["webSocketDebuggerUrl"]
     path = ws_url.split(CDP_HOST + ":" + str(CDP_PORT), 1)[1]
     sock = socket.create_connection((CDP_HOST, CDP_PORT), timeout=10)
     try:
         _handshake(sock, CDP_HOST, CDP_PORT, path)
+        _call(sock, 99, "Network.enable")
         _send_frame(sock, json.dumps({"id": 1, "method": "Page.enable"}))
         _send_frame(sock, json.dumps({"id": 2, "method": "Runtime.enable"}))
         _send_frame(
@@ -220,16 +251,45 @@ def _watch_target(target, fill_js):
             sock, json.dumps({"id": 4, "method": "Runtime.evaluate", "params": {"expression": fill_js}})
         )
         print("loginfill: injected into target %s" % target_id, flush=True)
-        sock.settimeout(60)
+        sock.settimeout(10)
+        on_site = False
+        check_at = None
+        checked = False
+        probe = _call(sock, 101, "Runtime.evaluate", {"expression": "location.hostname + '|' + document.readyState"})
+        host, _, ready = str(probe.get("result", {}).get("result", {}).get("value", "")).partition("|")
+        if host.endswith(AUTH_COOKIE_DOMAIN_SUFFIX) and ready == "complete":
+            on_site = True
+            check_at = time.time() + SESSION_CHECK_DELAY_SECONDS
         while True:
-            try:
-                opcode, payload = _recv_frame(sock)
-            except socket.timeout:
+            if _state["filled"]:
+                return "filled"
+            if check_at is not None and not checked and time.time() >= check_at:
+                checked = True
+                if _has_valid_session(sock):
+                    print("loginfill: already logged in, nothing to fill", flush=True)
+                    return "already-logged-in"
+                print("loginfill: no session after page load, waiting for the login form", flush=True)
                 continue
+            if not select.select([sock], [], [], 1)[0]:
+                continue
+            opcode, payload = _recv_frame(sock)
             if opcode == 0x8:
                 return "closed"
-            if opcode == 0x1 and _is_fill_complete_message(payload):
-                print("loginfill: filled login form", flush=True)
+            if opcode != 0x1:
+                continue
+            if _is_fill_complete_message(payload):
+                return "filled"
+            try:
+                msg = json.loads(payload.decode("utf-8"))
+            except ValueError:
+                continue
+            method = msg.get("method")
+            if method == "Page.frameNavigated":
+                frame = msg["params"]["frame"]
+                if "parentId" not in frame:
+                    on_site = (urllib.parse.urlparse(frame.get("url", "")).hostname or "").endswith(AUTH_COOKIE_DOMAIN_SUFFIX)
+            elif method == "Page.loadEventFired" and on_site and check_at is None:
+                check_at = time.time() + SESSION_CHECK_DELAY_SECONDS
     except OSError as exc:
         print("loginfill: target %s connection ended: %s" % (target_id, exc), flush=True)
         return "error"

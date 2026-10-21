@@ -13,7 +13,7 @@ root exec bridge from `index.html`, chained `"sh scrollfix; sh loginfill"`:
 - `scrollfix.py` — fixes remote-control scroll/focus navigation (the real
   site wasn't built with a TV remote in mind).
 - `loginfill.py` — login autofill, same architecture as f1tv-webos's. Auth
-  stays attached for the app's lifetime, so every login page (expired session, logout) gets filled.
+  session check uses an `SSESS`-prefixed cookie (Drupal convention).
 
 See `TODO.md` — login autofill sometimes doesn't trigger yet, not root-caused.
 
