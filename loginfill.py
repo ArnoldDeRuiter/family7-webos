@@ -255,11 +255,10 @@ def _watch_target(target, fill_js):
         on_site = False
         check_at = None
         checked = False
-        probe = _call(sock, 101, "Runtime.evaluate", {"expression": "location.hostname + '|' + document.readyState"})
-        host, _, ready = str(probe.get("result", {}).get("result", {}).get("value", "")).partition("|")
-        if host.endswith(AUTH_COOKIE_DOMAIN_SUFFIX) and ready == "complete":
-            on_site = True
-            check_at = time.time() + SESSION_CHECK_DELAY_SECONDS
+        _send_frame(
+            sock,
+            json.dumps({"id": 101, "method": "Runtime.evaluate", "params": {"expression": "location.hostname + '|' + document.readyState"}}),
+        )
         while True:
             if _state["filled"]:
                 return "filled"
@@ -282,6 +281,12 @@ def _watch_target(target, fill_js):
             try:
                 msg = json.loads(payload.decode("utf-8"))
             except ValueError:
+                continue
+            if msg.get("id") == 101:
+                host, _, ready = str(msg.get("result", {}).get("result", {}).get("value", "")).partition("|")
+                if host.endswith(AUTH_COOKIE_DOMAIN_SUFFIX) and ready == "complete" and check_at is None:
+                    on_site = True
+                    check_at = time.time() + SESSION_CHECK_DELAY_SECONDS
                 continue
             method = msg.get("method")
             if method == "Page.frameNavigated":
