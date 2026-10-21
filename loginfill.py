@@ -175,7 +175,6 @@ _state = {"filled": False}
 SESSION_CHECK_DELAY_SECONDS = 10  # after the site page loads, once it has had its say about the cookie
 
 AUTH_COOKIE_DOMAIN_SUFFIX = "family7.nl"
-AUTH_COOKIE_NAME_PREFIX = "SSESS"  # Drupal session cookie; hash suffix varies per site
 
 
 def _call(sock, msg_id, method, params=None):
@@ -197,18 +196,14 @@ def _call(sock, msg_id, method, params=None):
 
 
 def _has_valid_session(sock):
-    """True if a cookie proving an already-logged-in session exists. Checked
-    before injecting anything -- no point watching for a login form that
-    won't even show up because the site will just load straight into the
-    logged-in view."""
-    result = _call(sock, 100, "Network.getAllCookies")
-    cookies = result.get("result", {}).get("cookies", [])
-    for cookie in cookies:
-        domain = cookie.get("domain", "")
-        name = cookie.get("name", "")
-        if domain.endswith(AUTH_COOKIE_DOMAIN_SUFFIX) and name.startswith(AUTH_COOKIE_NAME_PREFIX):
-            return True
-    return False
+    """Asks the site itself: a logged-in user requesting the login page gets redirected away from it."""
+    js = (
+        "fetch('/plus/user/login', {credentials: 'include'})"
+        ".then(function(r){return r.redirected || new URL(r.url).pathname.indexOf('/user/login') < 0;})"
+        ".catch(function(){return false;})"
+    )
+    result = _call(sock, 100, "Runtime.evaluate", {"expression": js, "awaitPromise": True, "returnByValue": True})
+    return result.get("result", {}).get("result", {}).get("value") is True
 
 
 FILL_COMPLETE_MARKER = "__loginFillComplete__"
