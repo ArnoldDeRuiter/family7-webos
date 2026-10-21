@@ -166,10 +166,6 @@ def _find_target():
         time.sleep(POLL_INTERVAL_SECONDS)
 
 
-AUTH_COOKIE_DOMAIN_SUFFIX = "family7.nl"
-AUTH_COOKIE_NAME_PREFIX = "SSESS"  # Drupal session cookie; hash suffix varies per site
-
-
 def _call(sock, msg_id, method, params=None):
     """Request/response helper: sends one CDP command and blocks for the
     matching reply, discarding any events that arrive first."""
@@ -184,21 +180,6 @@ def _call(sock, msg_id, method, params=None):
             continue
         if msg.get("id") == msg_id:
             return msg
-
-
-def _has_valid_session(sock):
-    """True if a cookie proving an already-logged-in session exists. Checked
-    before injecting anything -- no point watching for a login form that
-    won't even show up because the site will just load straight into the
-    logged-in view."""
-    result = _call(sock, 100, "Network.getAllCookies")
-    cookies = result.get("result", {}).get("cookies", [])
-    for cookie in cookies:
-        domain = cookie.get("domain", "")
-        name = cookie.get("name", "")
-        if domain.endswith(AUTH_COOKIE_DOMAIN_SUFFIX) and name.startswith(AUTH_COOKIE_NAME_PREFIX):
-            return True
-    return False
 
 
 FILL_COMPLETE_MARKER = "__loginFillComplete__"
@@ -216,21 +197,13 @@ def _is_fill_complete_message(payload):
 
 
 def _watch_target(target, fill_js):
-    """Blocks until the fields are filled, or the target closes (app closed) --
-    whichever comes first. Once autofill succeeds there's nothing further for
-    this connection to do, so it closes itself immediately rather than
-    holding a root process + CDP connection open for the rest of the app's
-    lifetime just to watch a login page that's no longer showing."""
+    """Stays attached until the target closes, so every later login page (expired session, logout) gets filled too."""
     target_id = target["id"]
     ws_url = target["webSocketDebuggerUrl"]
     path = ws_url.split(CDP_HOST + ":" + str(CDP_PORT), 1)[1]
     sock = socket.create_connection((CDP_HOST, CDP_PORT), timeout=10)
     try:
         _handshake(sock, CDP_HOST, CDP_PORT, path)
-        _call(sock, 99, "Network.enable")
-        if _has_valid_session(sock):
-            print("loginfill: already logged in, nothing to fill", flush=True)
-            return "already-logged-in"
         _send_frame(sock, json.dumps({"id": 1, "method": "Page.enable"}))
         _send_frame(sock, json.dumps({"id": 2, "method": "Runtime.enable"}))
         _send_frame(
@@ -256,7 +229,7 @@ def _watch_target(target, fill_js):
             if opcode == 0x8:
                 return "closed"
             if opcode == 0x1 and _is_fill_complete_message(payload):
-                return "filled"
+                print("loginfill: filled login form", flush=True)
     except OSError as exc:
         print("loginfill: target %s connection ended: %s" % (target_id, exc), flush=True)
         return "error"
