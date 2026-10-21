@@ -129,15 +129,18 @@ def build_fill_js(username, password):
   var username = %s;
   var password = %s;
   var filled = false;
+  var stable = 0;
 
   function tryFill() {
     if (filled) return;
     var userField = document.querySelector('input[name="name"]');
     var passField = document.querySelector('input[name="pass"]');
-    if (!userField || !passField) return;
-    if (userField.value || passField.value) return;
-    setInputValue(userField, username);
-    setInputValue(passField, password);
+    if (!userField || !passField) { stable = 0; return; }
+    if (!userField.value) setInputValue(userField, username);
+    if (!passField.value) setInputValue(passField, password);
+    // The page can reset the fields while it finishes loading, so only finish once both values have held.
+    stable = (userField.value && passField.value) ? stable + 1 : 0;
+    if (stable < 8) return;
     filled = true;
     console.log('__loginFillComplete__');
   }
@@ -169,7 +172,7 @@ def _find_target():
 
 
 _state = {"filled": False}
-SESSION_CHECK_DELAY_SECONDS = 4  # after the site page loads, once it has had its say about the cookie
+SESSION_CHECK_DELAY_SECONDS = 10  # after the site page loads, once it has had its say about the cookie
 
 AUTH_COOKIE_DOMAIN_SUFFIX = "family7.nl"
 AUTH_COOKIE_NAME_PREFIX = "SSESS"  # Drupal session cookie; hash suffix varies per site
